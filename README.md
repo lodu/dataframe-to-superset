@@ -1,5 +1,8 @@
 # DataFrame to Superset
 
+[![PyPI version](https://badge.fury.io/py/dataframe-to-superset.svg)](https://pypi.org/project/dataframe-to-superset/)
+[![GitHub](https://img.shields.io/github/issues/lodu/dataframe-to-superset.svg?style=social&label=Issues)](https://github.com/lodu/dataframe-to-superset)
+
 A Python package to upload pandas DataFrames to Superset.
 The goal is to visualize your DataFrame inside Superset by providing an easy way to access your data in Superset.
 
@@ -12,7 +15,6 @@ You can install the package using pip:
 ```sh
 pip install dataframe-to-superset
 ```
-
 
 ## Usage
 
