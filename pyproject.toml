@@ -1,6 +1,6 @@
 [project]
 name = "dataframe-to-superset"
-version = "0.1.3"
+version = "0.1.4"
 description = "A Python package to upload pandas DataFrames to Superset for easy visualization."
 readme = "README.md"
 authors = [{ name = "lodu", email = "pypi@lodu.dev" }]
