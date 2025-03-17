@@ -1,43 +1,56 @@
 import logging
 import uuid
-from typing import Literal
-
 import pandas as pd
-
+from typing import Literal, Dict, Any, Union
 from .SupersetApi import SupersetApi
 
+# Configure logging for the module
+log = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.ERROR,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-log = logging.getLogger()
 
-
-class DataFrameToSuperset:
+@pd.api.extensions.register_dataframe_accessor("superset")
+class SupersetAccessor:
     """
-    A class to upload pandas DataFrames to Superset.
+    A pandas DataFrame accessor for uploading data to Superset.
 
-    Attributes:
-        superset_api (SupersetApi): An instance of the SupersetApi class.
-        schema (str): The schema name in the database.
-        base_url (str): The base URL of the Superset instance.
-        database_id (int): The ID of the database in Superset.
-        database_name (str): The name of the database in Superset.
+    This accessor allows users to configure a connection to a Superset instance
+    and upload pandas DataFrames as datasets to a specified database in Superset.
     """
 
-    def __init__(
-        self,
+    _superset_api = None
+    _superset_schema = "public"
+    _superset_database_name = None
+    _superset_base_url = None
+
+    def __init__(self, pandas_obj: pd.DataFrame):
+        """
+        Initializes the SupersetAccessor with a pandas DataFrame.
+
+        Args:
+            pandas_obj (pd.DataFrame): The pandas DataFrame to which this accessor is attached.
+        """
+        self._obj = pandas_obj
+
+    @classmethod
+    def configure(
+        cls,
         base_url: str,
         username: str,
         password: str,
         provider: Literal["ldap", "db"],
         database_name: str,
         schema: str = "public",
-    ):
+    ) -> None:
         """
-        Initializes the DataFrameToSuperset with Superset credentials and database details.
+        Configures the class-level Superset API and shared settings.
+
+        This method must be called once before using the accessor. It sets up the
+        connection to the Superset instance and specifies the target database and schema.
 
         Args:
             base_url (str): The base URL of the Superset instance.
@@ -46,170 +59,95 @@ class DataFrameToSuperset:
             provider (Literal["ldap", "db"]): The authentication provider.
             database_name (str): The name of the database in Superset.
             schema (str, optional): The schema name in the database. Defaults to "public".
-
-        Raises:
-            ValueError: If the database with the given name is not found.
-            Exception: If there is an error during initialization.
         """
-        self.superset_api = SupersetApi(base_url, username, password, provider)
-        self.schema = schema
-        self.base_url = base_url
+        cls._superset_api = SupersetApi(base_url, username, password, provider)
+        cls._superset_schema = schema
+        cls._superset_database_name = database_name
+        cls._superset_base_url = base_url
+        log.info("SupersetAccessor configured successfully")
 
-        try:
-            database_id = self.superset_api.get_database_id(database_name)
-            if database_id is None:
-                raise ValueError(f"Database with name '{database_name}' not found.")
-            self.database_id = database_id
-            self.database_name = database_name
-        except Exception as e:
-            log.error(f"Error initializing DataFrameToSuperset: {e}")
-            raise
-
-    def _upload_dataframe(self, dataframe: pd.DataFrame, name: str = None) -> dict:
+    @staticmethod
+    def _validate(obj: pd.DataFrame) -> None:
         """
-        Uploads a pandas DataFrame to Superset as a CSV.
+        Validates the DataFrame to ensure required columns are present.
 
         Args:
-            dataframe (pd.DataFrame): The DataFrame to upload.
-            name (str, optional): The name of the dataset in Superset. Defaults to None.
-
-        Returns:
-            dict: The response from the Superset API.
+            obj (pd.DataFrame): The DataFrame to validate.
 
         Raises:
-            Exception: If there is an error during the upload.
+            AttributeError: If required columns are missing.
         """
+        if "latitude" not in obj.columns or "longitude" not in obj.columns:
+            raise AttributeError(
+                "The DataFrame must contain 'latitude' and 'longitude' columns."
+            )
+
+    def as_datasource(
+        self, dataset_name: str = None, verbose_return: bool = False
+    ) -> Union[Dict[str, Any], str]:
+        """
+        Uploads the DataFrame to Superset as a dataset.
+
+        Converts the DataFrame to a CSV format and uploads it to the configured
+        Superset instance. The dataset is stored in the specified database and schema.
+
+        Args:
+            dataset_name (str, optional): The name of the dataset in Superset. If not provided,
+                                          a unique name is generated automatically.
+            verbose_return (bool, optional): If True, returns detailed information
+                                             about the uploaded dataset. Defaults to False.
+
+        Returns:
+            Union[Dict[str, Any], str]: If `verbose_return` is True, returns a dictionary with detailed
+                                        information (dataset ID, name, and URL). Otherwise, returns the
+                                        dataset URL as a string.
+
+        Raises:
+            ValueError: If the dataset ID cannot be retrieved after uploading.
+        """
+        if not self._superset_api or not self._superset_database_name:
+            raise ValueError(
+                "SupersetAccessor is not configured. Call `SupersetAccessor.configure()` first."
+            )
+
+        dataset_name = dataset_name or f"generated_dataset_{uuid.uuid4().hex}"
+        csv_data = self._obj.to_csv(index=False)
+
+        date_columns = [
+            col
+            for col in self._obj.columns
+            if pd.api.types.is_datetime64_any_dtype(self._obj[col])
+        ]
+
         try:
-            csv_data = dataframe.to_csv(index=False)
-            date_columns = [
-                col
-                for col in dataframe.columns
-                if pd.api.types.is_datetime64_any_dtype(dataframe[col])
-            ]
-            response = self.superset_api.upload_csv_to_database(
-                self.database_id,
-                name,
-                csv_data,
-                schema=self.schema,
+            database_id = self._superset_api.get_database_id(
+                self._superset_database_name
+            )
+            if database_id is None:
+                raise ValueError(
+                    f"Database '{self._superset_database_name}' not found in Superset"
+                )
+
+            self._superset_api.upload_csv_to_database(
+                database_id=database_id,
+                table_name=dataset_name,
+                csv_data=csv_data,
+                schema=self._superset_schema,
                 column_dates=date_columns,
             )
-            return response
-        except Exception as e:
-            log.error(f"Error uploading DataFrame: {e}")
-            raise
 
-    def to_superset(
-        self, dataframe: pd.DataFrame, name: str = None, verbose_return: bool = False
-    ) -> dict:
-        """
-        Uploads a DataFrame to Superset and returns the dataset URL or details.
-
-        Args:
-            dataframe (pd.DataFrame): The DataFrame to upload.
-            name (str, optional): The name of the dataset in Superset. Defaults to generated name.
-            verbose_return (bool, optional): If True, returns detailed information. Defaults to False.
-
-        Returns:
-            dict: The dataset URL or detailed information.
-
-        Raises:
-            ValueError: If the dataset ID cannot be retrieved.
-            Exception: If there is an error during the upload.
-        """
-        if name is None:
-            name = f"{self.superset_api.username}_generated_dataset_{uuid.uuid4().hex}"
-            log.warning(
-                f"No name provided, using generated '{name}' as name. May clutter the database ({self.database_name}) datasets list."
-            )
-        try:
-            self._upload_dataframe(dataframe, name)
-            dataset_id = self.superset_api.get_dataset_id(name)
+            dataset_id = self._superset_api.get_dataset_id(dataset_name)
             if dataset_id is None:
-                raise ValueError(f"Failed to retrieve dataset ID for '{name}'")
-            url = f"{self.base_url}/explore/?datasource_type=table&datasource_id={dataset_id}"
-            log.debug(f"Dataset uploaded successfully: {name}")
-            log.info(f"Explore the dataset at: {url}")
-            if verbose_return:
-                return {"dataset_id": dataset_id, "name": name, "url": url}
-            else:
-                return url
+                raise ValueError(f"Failed to retrieve dataset ID for '{dataset_name}'")
+
+            url = f"{self._superset_base_url}/explore/?datasource_type=table&datasource_id={dataset_id}"
+            log.info(f"Dataset '{dataset_name}' uploaded successfully to Superset")
+
+            return (
+                {"dataset_id": dataset_id, "name": dataset_name, "url": url}
+                if verbose_return
+                else url
+            )
         except Exception as e:
-            log.error(f"Error in to_superset: {e}")
+            log.error(f"Failed to upload dataset '{dataset_name}' to Superset: {e}")
             raise
-
-
-def upload_dataframe_to_superset(
-    dataframe: pd.DataFrame,
-    base_url: str,
-    username: str,
-    password: str,
-    provider: Literal["ldap", "db"],
-    database_name: str,
-    schema: str = "public",
-    name: str = None,
-    verbose_return: bool = False,
-) -> dict:
-    """
-    Uploads a pandas DataFrame to Superset without needing to create a DataFrameToSuperset object.
-
-    Args:
-        dataframe (pd.DataFrame): The DataFrame to upload.
-        base_url (str): The base URL of the Superset instance.
-        username (str): The username for Superset authentication.
-        password (str): The password for Superset authentication.
-        provider (Literal["ldap", "db"]): The authentication provider.
-        database_name (str): The name of the database in Superset.
-        schema (str, optional): The schema name in the database. Defaults to "public".
-        name (str, optional): The name of the dataset in Superset. Defaults to generated name.
-        verbose_return (bool, optional): If True, returns detailed information. Defaults to False.
-
-    Returns:
-        dict: The dataset URL or detailed information.
-
-    Raises:
-        ValueError: If the dataset ID cannot be retrieved.
-        Exception: If there is an error during the upload.
-    """
-    uploader = DataFrameToSuperset(
-        base_url, username, password, provider, database_name, schema
-    )
-    return uploader.to_superset(dataframe, name, verbose_return)
-
-
-def monkey_patch_to_allow_df_to_superset(
-    base_url: str,
-    username: str,
-    password: str,
-    provider: Literal["ldap", "db"],
-    database_name: str,
-    schema: str = "public",
-    default_name: str = None,
-):
-    """
-    Adds a to_superset method to pandas DataFrame class with predefined Superset credentials and database details.
-
-    Args:
-        base_url (str): The base URL of the Superset instance.
-        username (str): The username for Superset authentication.
-        password (str): The password for Superset authentication.
-        provider (Literal["ldap", "db"]): The authentication provider.
-        database_name (str): The name of the database in Superset.
-        schema (str, optional): The schema name in the database. Defaults to "public".
-        name (str, optional): The name of the dataset in Superset. Defaults DataFrame's name else to generated name.
-    """
-
-    def to_superset(self, name: str = None, verbose_return: bool = False):
-        dataset_name = name or self.name or default_name
-        return upload_dataframe_to_superset(
-            self,
-            base_url,
-            username,
-            password,
-            provider,
-            database_name,
-            schema,
-            dataset_name,
-            verbose_return,
-        )
-
-    pd.DataFrame.to_superset = to_superset

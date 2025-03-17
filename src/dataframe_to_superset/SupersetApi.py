@@ -12,17 +12,19 @@ log = logging.getLogger()
 class _SupersetApiBase:
     """
     Base class for interacting with the Superset API.
+
     Handles authentication, token refresh, and making requests.
     """
 
     def __init__(self, base_url: str, username: str, password: str, provider: str):
         """
-        Initialize the Superset API base class.
+        Initializes the Superset API base class.
 
-        :param base_url: The base URL of the Superset instance.
-        :param username: The username for authentication.
-        :param password: The password for authentication.
-        :param provider: The authentication provider.
+        Args:
+            base_url (str): The base URL of the Superset instance.
+            username (str): The username for authentication.
+            password (str): The password for authentication.
+            provider (str): The authentication provider.
         """
         self.api_url = f"{base_url}/api/v1"
         self.username = username
@@ -35,7 +37,7 @@ class _SupersetApiBase:
 
     def _authenticate(self) -> None:
         """
-        Authenticate with the Superset API and obtain access and refresh tokens.
+        Authenticates with the Superset API and obtains access and refresh tokens.
         """
         payload = {
             "username": self.username,
@@ -56,7 +58,7 @@ class _SupersetApiBase:
 
     def _refresh(self) -> None:
         """
-        Refresh the access token using the refresh token.
+        Refreshes the access token using the refresh token.
         """
         payload = {"refresh_token": self.refresh_token}
         try:
@@ -77,12 +79,18 @@ class _SupersetApiBase:
         self, method: HTTPMethod, endpoint: str, **kwargs: Any
     ) -> Dict[str, Any]:
         """
-        Make a request to the Superset API.
+        Makes a request to the Superset API.
 
-        :param method: The HTTP method to use for the request.
-        :param endpoint: The API endpoint to request.
-        :param kwargs: Additional arguments to pass to the request.
-        :return: The JSON response from the API.
+        Args:
+            method (HTTPMethod): The HTTP method to use for the request.
+            endpoint (str): The API endpoint to request.
+            kwargs (Any): Additional arguments to pass to the request.
+
+        Returns:
+            dict: The JSON response from the API.
+
+        Raises:
+            requests.RequestException: If the request fails.
         """
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {self.access_token}"
@@ -107,10 +115,14 @@ class _SupersetApiBase:
         self, requests_list: List[Tuple[HTTPMethod, str, Dict[str, Any]]]
     ) -> List[Dict[str, Any]]:
         """
-        Make multiple requests to the Superset API in parallel.
+        Makes multiple requests to the Superset API in parallel.
 
-        :param requests_list: A list of tuples containing the HTTP method, endpoint, and arguments for each request.
-        :return: A list of JSON responses from the API.
+        Args:
+            requests_list (List[Tuple[HTTPMethod, str, Dict[str, Any]]]): A list of tuples containing the HTTP method,
+                                                                          endpoint, and arguments for each request.
+
+        Returns:
+            List[dict]: A list of JSON responses from the API.
         """
         results = []
         with ThreadPoolExecutor() as executor:
@@ -130,6 +142,7 @@ class _SupersetApiBase:
 class SupersetApi(_SupersetApiBase):
     """
     Class for interacting with the Superset API.
+
     Provides methods for making requests and performing common operations.
     """
 
@@ -137,12 +150,15 @@ class SupersetApi(_SupersetApiBase):
         self, method: HTTPMethod, endpoint: str, **kwargs: Any
     ) -> Dict[str, Any]:
         """
-        Make a request to the Superset API.
+        Makes a request to the Superset API.
 
-        :param method: The HTTP method to use for the request.
-        :param endpoint: The API endpoint to request.
-        :param kwargs: Additional arguments to pass to the request.
-        :return: The JSON response from the API.
+        Args:
+            method (HTTPMethod): The HTTP method to use for the request.
+            endpoint (str): The API endpoint to request.
+            kwargs (Any): Additional arguments to pass to the request.
+
+        Returns:
+            dict: The JSON response from the API.
         """
         return self._request(method, endpoint, **kwargs)
 
@@ -150,19 +166,26 @@ class SupersetApi(_SupersetApiBase):
         self, requests_list: List[Tuple[HTTPMethod, str, Dict[str, Any]]]
     ) -> List[Dict[str, Any]]:
         """
-        Make multiple requests to the Superset API in parallel.
+        Makes multiple requests to the Superset API in parallel.
 
-        :param requests_list: A list of tuples containing the HTTP method, endpoint, and arguments for each request.
-        :return: A list of JSON responses from the API.
+        Args:
+            requests_list (List[Tuple[HTTPMethod, str, Dict[str, Any]]]): A list of tuples containing the HTTP method,
+                                                                          endpoint, and arguments for each request.
+
+        Returns:
+            List[dict]: A list of JSON responses from the API.
         """
         return self._parallel_requests(requests_list)
 
     def get_database_id(self, database_name: str) -> Union[int, None]:
         """
-        Get the ID of a database by its name.
+        Retrieves the ID of a database by its name.
 
-        :param database_name: The name of the database.
-        :return: The ID of the database, or None if not found.
+        Args:
+            database_name (str): The name of the database.
+
+        Returns:
+            int or None: The ID of the database, or None if not found.
         """
         try:
             response = self.request(HTTPMethod.GET, "/database/")
@@ -184,15 +207,21 @@ class SupersetApi(_SupersetApiBase):
         overwrite: bool = True,
     ) -> Dict[str, Any]:
         """
-        Upload a CSV file to a database.
+        Uploads a CSV file to a database.
 
-        :param database_id: The ID of the database.
-        :param table_name: The name of the table to create or overwrite.
-        :param csv_data: The CSV data to upload.
-        :param schema: The schema of the table.
-        :param column_dates: A list of columns to treat as dates.
-        :param overwrite: Whether to overwrite the table if it already exists.
-        :return: The JSON response from the API.
+        Args:
+            database_id (int): The ID of the database.
+            table_name (str): The name of the table to create or overwrite.
+            csv_data (str): The CSV data to upload.
+            schema (str, optional): The schema of the table. Defaults to "public".
+            column_dates (List[str], optional): A list of columns to treat as dates. Defaults to None.
+            overwrite (bool, optional): Whether to overwrite the table if it already exists. Defaults to True.
+
+        Returns:
+            dict: The JSON response from the API.
+
+        Raises:
+            Exception: If the upload fails.
         """
         files = {
             "already_exists": (None, "replace" if overwrite else "fail"),
@@ -214,10 +243,13 @@ class SupersetApi(_SupersetApiBase):
 
     def get_dataset_id(self, dataset_name: str) -> Union[int, None]:
         """
-        Get the ID of a dataset by its name.
+        Retrieves the ID of a dataset by its name.
 
-        :param dataset_name: The name of the dataset.
-        :return: The ID of the dataset, or None if not found.
+        Args:
+            dataset_name (str): The name of the dataset.
+
+        Returns:
+            int or None: The ID of the dataset, or None if not found.
         """
         try:
             response = self.request(HTTPMethod.GET, "/dataset/")
@@ -238,14 +270,20 @@ class SupersetApi(_SupersetApiBase):
         sql: str = None,
     ) -> Dict[str, Any]:
         """
-        Create a new dataset.
+        Creates a new dataset.
 
-        :param database_id: The ID of the database.
-        :param table_name: The name of the table.
-        :param schema: The schema of the table.
-        :param owners: A list of owner IDs.
-        :param sql: The SQL query to use for the dataset.
-        :return: The JSON response from the API.
+        Args:
+            database_id (int): The ID of the database.
+            table_name (str): The name of the table.
+            schema (str): The schema of the table.
+            owners (List[int]): A list of owner IDs.
+            sql (str, optional): The SQL query to use for the dataset. Defaults to None.
+
+        Returns:
+            dict: The JSON response from the API.
+
+        Raises:
+            Exception: If the dataset creation fails.
         """
         if sql is None:
             sql = f"SELECT * FROM {schema}.{table_name}"
