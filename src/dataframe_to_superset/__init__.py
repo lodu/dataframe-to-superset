@@ -84,7 +84,7 @@ class SupersetAccessor:
                 "The DataFrame must contain 'latitude' and 'longitude' columns."
             )
 
-    def as_datasource(
+    def as_dataset(
         self,
         dataset_name: str = None,
         replace: bool = True,

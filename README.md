@@ -4,7 +4,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/dataframe-to-superset)](https://pypi.org/project/dataframe-to-superset/)
 
-Upload your DataFrame to Superset as a datasource for rapid visualization.
+Upload your DataFrame to Superset as a dataset for rapid visualization.
 ## Notes
 
 - Ensure you have a database or datasource in Superset that supports CSV uploads.
@@ -12,7 +12,7 @@ Upload your DataFrame to Superset as a datasource for rapid visualization.
 - To maintain a clean and organized Superset environment:
     - Within Superset create a dedicated database or datasource (specified by the `database_name` parameter in the `configure` function) for this package.
     - Consistently use the same database or datasource name when uploading data, as the package overwrites existing data by default.
-- Call `SupersetAccessor.configure` at least once before using the `as_datasource` accessor.
+- Call `SupersetAccessor.configure` at least once before using the `as_dataset` accessor.
 
 ## Installation
 
@@ -39,14 +39,14 @@ SupersetAccessor.configure(
 data = {"name": ["Alice", "Bob"], "age": [25, 30]}
 df = pd.DataFrame(data)
 
-url = df.superset.as_datasource("people")
+url = df.superset.as_dataset("people")
 print(url)
 
 # Another example
 data = {"animal": ["Wolf", "Cat"], "Sound": ["Howl", "Meow"]}
 df = pd.DataFrame(data)
 
-url = df.superset.as_datasource("animal_sounds", verbose_return = True)
+url = df.superset.as_dataset("animal_sounds", verbose_return = True)
 print(url)
 ```
 ### Configuration Parameters for `configure` Function
@@ -62,7 +62,7 @@ print(url)
 
 ---
 
-### Parameters for `as_datasource` Method
+### Parameters for `as_dataset` Method
 
 | Parameter        | Type        | Default                                      | Description                                                                 |
 |------------------|-------------|----------------------------------------------|-----------------------------------------------------------------------------|
@@ -71,9 +71,9 @@ print(url)
 | `verbose_return` | `bool`      | `False`                                      | Return detailed information in stead of only the url |
 
 ---
-### Return Types for `as_datasource` Method
+### Return Types for `as_dataset` Method
 
 | Return Type                  | Description                                                                 | Example Response                                                                 |
 |------------------------------|-----------------------------------------------------------------------------|---------------------------------------------------------------------------------|
-| `Dict[str, Any]` (if `verbose_return=True`) | Dictionary with detailed information about the created/updated dataset. | `{"dataset_id": 123, "name": "animal_sounds", "url": "https://superset/explore/?dataset_id=123"}` |
-| `str` (if `verbose_return=False`)          | URL of the uploaded dataset for direct visualisation access`. | `"https://superset/explore/?dataset_id=123"`                                     |
+| `Dict[str, Any]` (if `verbose_return=True`) | Dictionary with detailed information about the created/updated dataset. | `{"dataset_id": 123, "name": "animal_sounds", "url": "https://superset/explore/?datasource_type=table&datasource_id=123"}` |
+| `str` (if `verbose_return=False`)          | URL of the uploaded dataset for direct visualisation access`. | `"https://superset/explore/?datasource_type=table&datasource_id=123"`                                     |
