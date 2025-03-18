@@ -1,12 +1,24 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from http import HTTPMethod
+from enum import Enum
 from threading import Lock
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Literal, Tuple, Union
 
 import requests
 
 log = logging.getLogger()
+
+
+# import HTTPMethod from http was implemented in python3.11...
+class HTTPMethod(str, Enum):
+    GET = "GET"
+    POST = "POST"
+    PUT = "PUT"
+    DELETE = "DELETE"
+    PATCH = "PATCH"
+
+
+Auth_Provider_Type = set[Literal["db", "ldap", "oauth", "oid", "remote_user"]]
 
 
 class _SupersetApiBase:
@@ -16,7 +28,9 @@ class _SupersetApiBase:
     Handles authentication, token refresh, and making requests.
     """
 
-    def __init__(self, base_url: str, username: str, password: str, provider: str):
+    def __init__(
+        self, base_url: str, username: str, password: str, provider: Auth_Provider_Type
+    ):
         """
         Initializes the Superset API base class.
 
@@ -26,13 +40,13 @@ class _SupersetApiBase:
             password (str): The password for authentication.
             provider (str): The authentication provider.
         """
-        self.api_url = f"{base_url}/api/v1"
-        self.username = username
-        self.password = password
-        self.provider = provider
-        self.access_token = None
-        self.refresh_token = None
-        self.lock = Lock()
+        self.api_url: str = f"{base_url}/api/v1"
+        self.username: str = username
+        self.password: str = password
+        self.provider: Auth_Provider_Type = provider
+        self.access_token: str = None
+        self.refresh_token: str = None
+        self.lock: Lock = Lock()
         self._authenticate()
 
     def _authenticate(self) -> None:
@@ -49,12 +63,14 @@ class _SupersetApiBase:
             response = requests.post(f"{self.api_url}/security/login", json=payload)
             response.raise_for_status()
             tokens = response.json()
-            self.access_token = tokens["access_token"]
-            self.refresh_token = tokens["refresh_token"]
-            log.debug("Authentication successful")
         except requests.RequestException as e:
             log.error(f"Authentication failed: {e}")
             raise
+        self.access_token = tokens.get("access_token")
+        self.refresh_token = tokens.get("refresh_token")
+        if not self.access_token or not self.refresh_token:
+            raise Exception("Authentication failed: Missing access or refresh token")
+        log.debug("Authentication successful")
 
     def _refresh(self) -> None:
         """
@@ -68,12 +84,16 @@ class _SupersetApiBase:
             else:
                 response.raise_for_status()
                 tokens = response.json()
-                self.access_token = tokens["access_token"]
-                self.refresh_token = tokens["refresh_token"]
-                log.info("Token refresh successful")
         except requests.RequestException as e:
             log.error(f"Token refresh failed: {e}")
             raise
+        access_token = tokens.get("access_token")
+        refresh_token = tokens.get("refresh_token")
+        if not access_token or not refresh_token:
+            raise Exception("Authentication failed: Missing access or refresh token")
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        log.info("Token refresh successful")
 
     def _request(
         self, method: HTTPMethod, endpoint: str, **kwargs: Any
@@ -189,13 +209,16 @@ class SupersetApi(_SupersetApiBase):
         """
         try:
             response = self.request(HTTPMethod.GET, "/database/")
-            databases = response["result"]
+            databases = response.get("result")
             for db in databases:
                 if db.get("database_name") == database_name:
                     return db.get("id")
         except Exception as e:
             log.error(f"Failed to get database ID for {database_name}: {e}")
-        return None
+            return None
+        log.error(
+            f"Database ID for {database_name} not found in Superset environment (with {self.username} user)."
+        )
 
     def upload_csv_to_database(
         self,
@@ -204,7 +227,7 @@ class SupersetApi(_SupersetApiBase):
         csv_data: str,
         schema: str = "public",
         column_dates: List[str] = None,
-        overwrite: bool = True,
+        replace: bool = True,
     ) -> Dict[str, Any]:
         """
         Uploads a CSV file to a database.
@@ -215,7 +238,7 @@ class SupersetApi(_SupersetApiBase):
             csv_data (str): The CSV data to upload.
             schema (str, optional): The schema of the table. Defaults to "public".
             column_dates (List[str], optional): A list of columns to treat as dates. Defaults to None.
-            overwrite (bool, optional): Whether to overwrite the table if it already exists. Defaults to True.
+            replace (bool, optional): Whether to overwrite the replace if it already exists. Defaults to True.
 
         Returns:
             dict: The JSON response from the API.
@@ -224,7 +247,7 @@ class SupersetApi(_SupersetApiBase):
             Exception: If the upload fails.
         """
         files = {
-            "already_exists": (None, "replace" if overwrite else "fail"),
+            "already_exists": (None, "replace" if replace else "fail"),
             "table_name": (None, table_name),
             "schema": (None, schema),
             "file": ("data.csv", csv_data),

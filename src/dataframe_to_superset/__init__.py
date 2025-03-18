@@ -1,8 +1,10 @@
 import logging
 import uuid
+from typing import Any, Dict, Union
+
 import pandas as pd
-from typing import Literal, Dict, Any, Union
-from .SupersetApi import SupersetApi
+
+from .SupersetApi import Auth_Provider_Type, SupersetApi
 
 # Configure logging for the module
 log = logging.getLogger(__name__)
@@ -42,7 +44,7 @@ class SupersetAccessor:
         base_url: str,
         username: str,
         password: str,
-        provider: Literal["ldap", "db"],
+        provider: Auth_Provider_Type,
         database_name: str,
         schema: str = "public",
     ) -> None:
@@ -83,19 +85,24 @@ class SupersetAccessor:
             )
 
     def as_datasource(
-        self, dataset_name: str = None, verbose_return: bool = False
+        self,
+        dataset_name: str = None,
+        replace: bool = True,
+        verbose_return: bool = False,
     ) -> Union[Dict[str, Any], str]:
         """
         Uploads the DataFrame to Superset as a dataset.
 
-        Converts the DataFrame to a CSV format and uploads it to the configured
+        This method converts the DataFrame to a CSV format and uploads it to the configured
         Superset instance. The dataset is stored in the specified database and schema.
 
         Args:
             dataset_name (str, optional): The name of the dataset in Superset. If not provided,
-                                          a unique name is generated automatically.
-            verbose_return (bool, optional): If True, returns detailed information
-                                             about the uploaded dataset. Defaults to False.
+                                            a unique name is generated automatically using a UUID.
+            replace (bool, optional): If True, replaces the existing dataset with the same name.
+                                        Defaults to True.
+            verbose_return (bool, optional): If True, returns detailed information about the uploaded
+                                                dataset, including its ID, name, and URL. Defaults to False.
 
         Returns:
             Union[Dict[str, Any], str]: If `verbose_return` is True, returns a dictionary with detailed
@@ -103,14 +110,19 @@ class SupersetAccessor:
                                         dataset URL as a string.
 
         Raises:
-            ValueError: If the dataset ID cannot be retrieved after uploading.
+            ValueError: If the SupersetAccessor is not configured, the target database is not found,
+                        or the dataset ID cannot be retrieved after uploading.
+            Exception: If any other error occurs during the upload process.
         """
         if not self._superset_api or not self._superset_database_name:
             raise ValueError(
                 "SupersetAccessor is not configured. Call `SupersetAccessor.configure()` first."
             )
 
-        dataset_name = dataset_name or f"generated_dataset_{uuid.uuid4().hex}"
+        dataset_name = (
+            dataset_name
+            or f"{self._superset_api.username}_generated_dataset_{uuid.uuid4().hex[:6]}"
+        )
         csv_data = self._obj.to_csv(index=False)
 
         date_columns = [
@@ -134,6 +146,7 @@ class SupersetAccessor:
                 csv_data=csv_data,
                 schema=self._superset_schema,
                 column_dates=date_columns,
+                replace=replace,
             )
 
             dataset_id = self._superset_api.get_dataset_id(dataset_name)
