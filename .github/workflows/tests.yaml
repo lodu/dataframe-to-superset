@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - feat/cicd-automatic-testing-lintin # for testing
+      - feat/cicd-automatic-testing-linting # for testing
 jobs:
   pypi:
     name: Run pytest tests
