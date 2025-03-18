@@ -2,7 +2,7 @@
 
 > **Note**: The code docs AI-generated so may not be perfect (or even right lol).
 
-[![PyPI version](https://badge.fury.io/py/dataframe-to-superset.svg)](https://pypi.org/project/dataframe-to-superset/)
+[![PyPI version](https://img.shields.io/pypi/v/dataframe-to-superset)](https://pypi.org/project/dataframe-to-superset/)
 
 Upload your DataFrame to Superset as a datasource for rapid visualization.
 ## Notes
