@@ -1,4 +1,4 @@
-# Superset Accessor for Pandas DataFrames
+# Superset Accessor for Pandas DataFrames 🚀
 
 > **Note**: The code docs AI-generated so may not be perfect (or even right lol).
 
